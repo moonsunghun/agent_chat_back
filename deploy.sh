@@ -1,18 +1,14 @@
 #!/bin/bash
 set -e  # 오류 발생시 스크립트 중단
 
-
 echo "deleting old app"
 sudo rm -rf /var/www/fastapi-chat_back
 
-
 echo "creating app folder"
-sudo mkdir -p /var/www/fastapi-chat_back
-
+sudo mkdir -p /var/www/fastapi-chat_back 
 
 echo "moving files to app folder"
 sudo cp -r * /var/www/fastapi-chat_back/
-
 
 # Navigate to the app directory and handle .env file
 cd /var/www/fastapi-chat_back/
@@ -26,14 +22,13 @@ elif [ -f .env ]; then
     echo ".env file already exists"
 else
     # .env 파일 생성 (필요한 환경 변수 설정)
-    cat > .env << 'EOF'
-OPENAI_API_KEY=${OPENAI_API_KEY} 
+    cat << EOF > .env
+OPENAI_API_KEY=${OPENAI_API_KEY}
 TAVILY_API_KEY=${TAVILY_API_KEY}
-EOF
+EOF 
     sudo chown ubuntu:ubuntu .env
     echo "New .env file created"
-fi
-
+fi 
 
 # .env 파일 확인
 echo "Checking .env file..."
@@ -44,7 +39,6 @@ else
     echo "Warning: .env file not found"
 fi
 
-
 # 미니콘다 설치 (없는 경우)
 if [ ! -d "/home/ubuntu/miniconda" ]; then
     echo "Installing Miniconda..."
@@ -54,11 +48,16 @@ if [ ! -d "/home/ubuntu/miniconda" ]; then
     rm /tmp/miniconda.sh
 fi
 
-
 # PATH에 미니콘다 추가
 export PATH="/home/ubuntu/miniconda/bin:$PATH"
 source /home/ubuntu/miniconda/bin/activate
 
+# Update and install Nginx if not already installed
+if ! command -v nginx > /dev/null; then
+    echo "Installing Nginx"
+    sudo apt-get update
+    sudo apt-get install -y nginx
+fi
 
 # Nginx 설정
 echo "Configuring Nginx..."
@@ -66,7 +65,6 @@ sudo bash -c 'cat > /etc/nginx/sites-available/myapp <<EOF
 server {
     listen 80;
     server_name _;
-
 
     location / {
         proxy_pass http://127.0.0.1:8000;
@@ -79,74 +77,52 @@ server {
 }
 EOF'
 
-
 # Nginx 설정 심볼릭 링크 생성
 sudo ln -sf /etc/nginx/sites-available/myapp /etc/nginx/sites-enabled/
 sudo rm -f /etc/nginx/sites-enabled/default
-
 
 # 로그 파일 설정
 sudo mkdir -p /var/log/fastapi
 sudo touch /var/log/fastapi/uvicorn.log
 sudo chown -R ubuntu:ubuntu /var/log/fastapi
 
-
 # 기존 프로세스 정리
 echo "Cleaning up existing processes..."
 sudo pkill uvicorn || true
 sudo systemctl stop nginx || true
 
-
 # 애플리케이션 디렉토리 권한 설정
 sudo chown -R ubuntu:ubuntu /var/www/fastapi-chat_back
-
 
 # 콘다 환경 생성 및 활성화
 echo "Creating and activating conda environment..."
 /home/ubuntu/miniconda/bin/conda create -y -n fastapi-env python=3.12 || true
 source /home/ubuntu/miniconda/bin/activate fastapi-env
 
-
 # 의존성 설치
 echo "Installing dependencies..."
 pip install -r requirements.txt
-
-
-# Update and install Nginx if not already installed
-if ! command -v nginx > /dev/null; then
-    echo "Installing Nginx"
-    sudo apt-get update
-    sudo apt-get install -y nginx
-fi
-
 
 # Nginx 설정 테스트 및 재시작
 echo "Testing and restarting Nginx..."
 sudo nginx -t
 sudo systemctl restart nginx
 
-
 # 애플리케이션 시작
 echo "Starting FastAPI application..."
 cd /var/www/fastapi-chat_back
 nohup /home/ubuntu/miniconda/envs/fastapi-env/bin/uvicorn backend:app --host 0.0.0.0 --port 8000 --workers 3 > /var/log/fastapi/uvicorn.log 2>&1 &
 
-
 # 애플리케이션 시작 확인을 위한 대기
 sleep 5
-
 
 # 로그 확인
 echo "Recent application logs:"
 tail -n 20 /var/log/fastapi/uvicorn.log || true
 
-
 echo "Deployment completed successfully! 🚀"
-
 
 # 상태 확인
 echo "Checking service status..."
 ps aux | grep uvicorn
 sudo systemctl status nginx
-
-
